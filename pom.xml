@@ -30,19 +30,6 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.2.5</version>
             </plugin>
-            <plugin>
-                <groupId>org.pitest</groupId>
-                <artifactId>pitest-maven</artifactId>
-                <version>1.16.1</version>
-                <configuration>
-                    <targetClasses>
-                        <param>life.light.*</param>
-                    </targetClasses>
-                    <targetTests>
-                        <param>life.light.*</param>
-                    </targetTests>
-                </configuration>
-            </plugin>
         </plugins>
     </build>
 

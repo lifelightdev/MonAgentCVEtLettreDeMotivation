@@ -1,0 +1,21 @@
+# Build artifacts
+target/
+*.class
+*.jar
+*.war
+
+# IDE files
+.idea/
+*.iml
+*.ipr
+
+# Logs and temporary files
+*.log
+tmp/
+
+# Dependencies (if using Maven or Gradle)
+target/
+
+# OS specific files
+.DS_Store
+Thumbs.db

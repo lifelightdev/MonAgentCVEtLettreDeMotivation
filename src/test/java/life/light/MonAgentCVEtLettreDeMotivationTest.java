@@ -51,14 +51,25 @@ class MonAgentCVEtLettreDeMotivationTest {
         server.start();
 
         String address = "http://127.0.0.1:" + server.getAddress().getPort() + "/v1/chat/completions";
-        String response = MonAgentCVEtLettreDeMotivation.executeRequest(address, "model-test");
+        String response = MonAgentCVEtLettreDeMotivation.executeRequest(address, "google/gemma-4-e2b");
 
         assertEquals("POST", methodRef.get());
         assertEquals("application/json", contentTypeRef.get());
-        assertTrue(bodyRef.get().contains("\"model\": \"model-test\""));
+        assertTrue(bodyRef.get().contains("\"model\": \"google/gemma-4-e2b\""));
         assertTrue(bodyRef.get().contains("\"role\": \"user\""));
         assertTrue(bodyRef.get().contains("Dis-moi simplement bonjour en un seul mot"));
         assertEquals("{\"ok\":true}", response);
+    }
+
+    @Test
+    void executeRequest_devraitRetournerBonjour_quandOnLuiDemandeDeDireBonjour() throws Exception {
+        java.util.Properties properties = MonAgentCVEtLettreDeMotivation.loadProperties();
+        String address = properties.getProperty("address");
+        String model = properties.getProperty("model");
+
+        String response = MonAgentCVEtLettreDeMotivation.executeRequest(address, model);
+
+        assertTrue(response.toLowerCase().contains("bonjour"), "La réponse doit contenir 'bonjour'. Réponse reçue : " + response);
     }
 
     private static void captureRequest(
