@@ -39,17 +39,18 @@ public class MonAgentCVEtLettreDeMotivation {
         return properties;
     }
 
-    static String buildJsonInput(String model, String role, String content) {
+    static String buildJsonInput(String model, String role, String content, String system) {
         return """
-                {
-                  "model": "%s",
-                  "messages": [
-                    { "role": "%s", "content": "%s" }
-                  ],
-                  "temperature": 0.7,
-                  "max_tokens": 200
-                }
-                """.formatted(model, role, content);
+            {
+              "model": "%s",
+              "messages": [
+                { "role": "%s", "content": "%s" }
+              ],
+              "system": "%s",
+              "temperature": 0.7,
+              "max_tokens": 200
+            }
+            """.formatted(model, role, content, system);
     }
 
     static String executeRequest(String address, String model) throws Exception {
@@ -58,19 +59,38 @@ public class MonAgentCVEtLettreDeMotivation {
         conn.setRequestMethod("POST");
         conn.setRequestProperty("Content-Type", "application/json");
         conn.setDoOutput(true);
+        String systemPrompt = "Tu es un expert en rédaction de CV et lettres de motivation.";
+        String jsonInput = buildJsonInput(model, DEFAULT_ROLE, DEFAULT_CONTENT, systemPrompt);
 
-        String jsonInput = buildJsonInput(model, DEFAULT_ROLE, DEFAULT_CONTENT);
+        // Étape 1 : Envoyer le corps de la requête
         try (OutputStream os = conn.getOutputStream()) {
             os.write(jsonInput.getBytes(StandardCharsets.UTF_8));
         }
-        try (BufferedReader br = new BufferedReader(
-                new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8))) {
-            StringBuilder response = new StringBuilder();
-            String line;
-            while ((line = br.readLine()) != null) {
-                response.append(line.trim());
+
+        // Étape 2 : Vérifier le code de réponse HTTP
+        int responseCode = conn.getResponseCode();
+
+        if (responseCode >= 200 && responseCode < 300) {
+            // Succès : Lire le flux de la réponse
+            try (BufferedReader br = new BufferedReader(
+                    new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8))) {
+                StringBuilder response = new StringBuilder();
+                String line;
+                while ((line = br.readLine()) != null) {
+                    response.append(line.trim());
+                }
+                return response.toString();
             }
-            return response.toString();
+        } else {
+            // Échec : Lire le flux d'erreur si disponible
+            String errorResponse = "";
+            try (BufferedReader br = new BufferedReader(
+                    new InputStreamReader(conn.getErrorStream(), StandardCharsets.UTF_8))) {
+                errorResponse = br.lines().reduce("", (acc, line) -> acc + line + "\n");
+            } catch (Exception e) {
+                // Ignorer si le flux d'erreur n'est pas disponible ou lisible
+            }
+            throw new RuntimeException("Erreur HTTP " + responseCode + ": " + errorResponse, new RuntimeException("HTTP Error"));
         }
     }
 }

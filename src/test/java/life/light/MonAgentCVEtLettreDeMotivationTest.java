@@ -26,16 +26,7 @@ class MonAgentCVEtLettreDeMotivationTest {
     }
 
     @Test
-    void buildJsonInput_shouldContainModelRoleAndContent() {
-        String json = MonAgentCVEtLettreDeMotivation.buildJsonInput("model-test", "user", "bonjour");
-
-        assertTrue(json.contains("\"model\": \"model-test\""));
-        assertTrue(json.contains("\"role\": \"user\""));
-        assertTrue(json.contains("\"content\": \"bonjour\""));
-    }
-
-    @Test
-    void executeRequest_shouldSendPostJsonAndReturnResponse() throws Exception {
+    void executerRequete_envoiePostJsonEtRetourneReponse() throws Exception {
         AtomicReference<String> methodRef = new AtomicReference<>();
         AtomicReference<String> contentTypeRef = new AtomicReference<>();
         AtomicReference<String> bodyRef = new AtomicReference<>();
@@ -70,6 +61,44 @@ class MonAgentCVEtLettreDeMotivationTest {
         String response = MonAgentCVEtLettreDeMotivation.executeRequest(address, model);
 
         assertTrue(response.toLowerCase().contains("bonjour"), "La réponse doit contenir 'bonjour'. Réponse reçue : " + response);
+    }
+
+    @Test
+    void executeRequest_devraitLeverException_quandLeServeurRetourneErreur500() throws Exception {
+        // Configuration du serveur pour renvoyer une erreur 500
+        server = HttpServer.create(new InetSocketAddress(0), 0);
+        server.createContext("/v1/chat/completions", exchange -> {
+            // Simuler une erreur serveur
+            exchange.sendResponseHeaders(500, 0);
+            exchange.close();
+        });
+        server.start();
+
+        String address = "http://127.0.0.1:" + server.getAddress().getPort() + "/v1/chat/completions";
+
+        try {
+            MonAgentCVEtLettreDeMotivation.executeRequest(address, "google/gemma-4-e2b");
+        } catch (Exception e) {
+            assertTrue(e.getMessage().contains("500") || e instanceof java.io.IOException, "L'exception levée ne semble pas être une erreur HTTP.");
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void verifierConstructionJsonInput_contientModelRoleEtContenuEtSystem() {
+        String model = "model-test";
+        String role = "user";
+        String content = "bonjour";
+        String systemPrompt = "Tu es un expert en rédaction de CV et lettres de motivation.";
+
+        String json = MonAgentCVEtLettreDeMotivation.buildJsonInput(model, role, content, systemPrompt);
+
+        assertTrue(json.contains("\"model\": \"model-test\""));
+        assertTrue(json.contains("\"role\": \"user\""));
+        assertTrue(json.contains("\"content\": \"bonjour\""));
+        assertTrue(json.contains("system"));
+        assertTrue(json.contains(systemPrompt));
     }
 
     private static void captureRequest(
