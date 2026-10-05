@@ -101,6 +101,26 @@ class MonAgentCVEtLettreDeMotivationTest {
         assertTrue(json.contains(systemPrompt));
     }
 
+    @Test
+    void litFichierWord_devraitRetournerLeContenu() {
+        String testFilePath = "src/test/resources/cv.docx";
+        String expectedContent = """
+                Jean DUPONT
+                Développeur Back-End Java\s
+                
+                
+                
+                \uF029 06 06 06 06 06\t\uF02A jean.dupont@yahoo.fre\tGitHub jeandupont\tLinkedIn jean-dupont\tForte d’une expérience de 25 ans en maintenance applicative, je mets en œuvre les principes du Craft pour maintenir des logiciels de haute qualité, maintenables et parfaitement adaptés aux besoins des utilisateurs.
+                LANGUES\tFrançais\tLangue maternelle\tAnglais\tB1 (Intermédiaire)\t\tFORMATION\tLicence Informatique 2018 CNAM \tBTS Informatique de gestion 2001 \tBac pro de comptabilité 1997\tRÉALISATION\tDéveloppeuse logiciel (25 ans)\tPilotage de la maintenance corrective et évolutive d’applications métiers complexes.\tRédaction de documentation technique et fonctionnelle.\tMigration et montée en version d'applications Java pour sécuriser et moderniser le parc applicatif.\tRelation avec le client.\tSuivi rigoureux des déploiements dans les environnements de qualification et de production.\tPratique quotidienne du TDD pour garantir la robustesse du code.\tDevOps (2 ans)\tOptimisation de l’intégration continue (CI/CD) et automatisation des process DevOps.\tMise en place de l’intégration continue.\tCrafteuse (1 an)\tAnimation de Coding Dojos pour diffuser les bonnes pratiques de développement au sein des équipes.\tRéalisation d'audits de code et formulation de préconisations techniques pour réduire la dette.\t\tEXPERTISE\tBack-end Java, Spring, Hibernate, SQL.\tQualité et Craft Pratique quotidienne du TDD, Clean Code, Pair & Mob Programming, Scrum.\tDevOps et Outils Git, Jenkins, SonarQube, IntelliJ, PostgreSQL, Oracle, MySQL.\tDomaines Fonctionnels Banque, Assurance, Publicité, Cinéma, Énergie, Logistique, Industrie, Éducation, Fonction publique.
+                
+                
+                """;
+
+        String actualContent = MonAgentCVEtLettreDeMotivation.readWordFile(testFilePath);
+
+        assertEquals(expectedContent, actualContent, "Le contenu du fichier Word lu ne correspond pas au contenu attendu.");
+    }
+
     private static void captureRequest(
             HttpExchange exchange,
             AtomicReference<String> methodRef,

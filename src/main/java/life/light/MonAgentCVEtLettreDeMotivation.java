@@ -1,9 +1,6 @@
 package life.light;
 
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.io.InputStream;
-import java.io.OutputStream;
+import java.io.*;
 import java.net.HttpURLConnection;
 import java.net.URI;
 import java.net.URL;
@@ -13,6 +10,9 @@ import java.util.Properties;
 
 import static java.lang.System.Logger.Level.ERROR;
 import static java.lang.System.Logger.Level.INFO;
+
+import org.apache.poi.xwpf.extractor.XWPFWordExtractor;
+import org.apache.poi.xwpf.usermodel.XWPFDocument;
 
 public class MonAgentCVEtLettreDeMotivation {
     private static final System.Logger logger = System.getLogger(MonAgentCVEtLettreDeMotivation.class.getName());
@@ -91,6 +91,17 @@ public class MonAgentCVEtLettreDeMotivation {
                 // Ignorer si le flux d'erreur n'est pas disponible ou lisible
             }
             throw new RuntimeException("Erreur HTTP " + responseCode + ": " + errorResponse, new RuntimeException("HTTP Error"));
+        }
+    }
+
+    public static String readWordFile(String testFilePath) {
+        try {
+            XWPFDocument document = new XWPFDocument(new FileInputStream(testFilePath));
+            XWPFWordExtractor extractor = new XWPFWordExtractor(document);
+            return extractor.getText();
+        } catch (Exception e) {
+            logger.log(ERROR, "Erreur lors de la lecture du fichier Word : " + e.getMessage());
+            return ""; 
         }
     }
 }
