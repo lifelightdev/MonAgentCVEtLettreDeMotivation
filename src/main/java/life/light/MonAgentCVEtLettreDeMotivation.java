@@ -57,6 +57,11 @@ public class MonAgentCVEtLettreDeMotivation {
         return executeRequest(address, model, DEFAULT_CONTENT);
     }
 
+    static String executeRequestAvecFichierWord(String address, String model, String cvPath) throws Exception {
+        String cvContent = readWordFile(cvPath);
+        return executeRequest(address, model, cvContent);
+    }
+
     static String executeRequest(String address, String model, String cvContent) throws Exception {
         URL url = new URI(address).toURL();
         HttpURLConnection conn = (HttpURLConnection) url.openConnection();
