@@ -50,7 +50,16 @@ public class MonAgentCVEtLettreDeMotivation {
               "temperature": 0.7,
               "max_tokens": 200
             }
-            """.formatted(model, role, content, system);
+            """.formatted(model, role, escapeJson(content), escapeJson(system));
+    }
+
+    static String escapeJson(String value) {
+        return value
+                .replace("\\", "\\\\")
+                .replace("\"", "\\\"")
+                .replace("\n", "\\n")
+                .replace("\r", "\\r")
+                .replace("\t", "\\t");
     }
 
     static String executeRequest(String address, String model) throws Exception {

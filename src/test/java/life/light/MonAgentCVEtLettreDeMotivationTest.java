@@ -148,6 +148,24 @@ class MonAgentCVEtLettreDeMotivationTest {
     }
 
     @Test
+    void buildJsonInput_echappeLesCaracteresSpeciauxDansLeContenuEtLeSystem() {
+        String content = "ligne1\nligne2\rfin\t\"quote\"\\slash";
+        String systemPrompt = "system\navec\t\"guillemets\" et \\backslash";
+
+        String json = MonAgentCVEtLettreDeMotivation.buildJsonInput(
+                "model-test",
+                "user",
+                content,
+                systemPrompt
+        );
+
+        assertTrue(json.contains("ligne1\\nligne2\\rfin\\t\\\"quote\\\"\\\\slash"),
+                "Le content doit échapper \\n, \\r, \\t, \\\" et \\\\");
+        assertTrue(json.contains("system\\navec\\t\\\"guillemets\\\" et \\\\backslash"),
+                "Le system doit échapper \\n, \\t, \\\" et \\\\");
+    }
+
+    @Test
     void litFichierWord_devraitRetournerLeContenu() {
         String testFilePath = "src/test/resources/cv.docx";
         String expectedContent = """
