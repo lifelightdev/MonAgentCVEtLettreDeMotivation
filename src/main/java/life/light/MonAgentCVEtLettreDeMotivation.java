@@ -21,12 +21,19 @@ public class MonAgentCVEtLettreDeMotivation {
 
     static void main() {
         try {
-            Properties properties = loadProperties();
-            String response = executeRequest(properties.getProperty("address"), properties.getProperty("model"));
+            String response = run(loadProperties());
             logger.log(INFO, "Réponse de l'IA : \n" + response);
         } catch (Exception e) {
             logger.log(ERROR, e.getMessage());
         }
+    }
+
+    static String run(Properties properties) throws Exception {
+        return executeRequestAvecFichierWord(
+                properties.getProperty("address"),
+                properties.getProperty("model"),
+                properties.getProperty("cv.path")
+        );
     }
 
     static Properties loadProperties() throws Exception {
@@ -62,8 +69,12 @@ public class MonAgentCVEtLettreDeMotivation {
                 .replace("\t", "\\t");
     }
 
+    static String construireMessageUtilisateur(String cvContent) {
+        return "Voici mon CV :\n" + cvContent;
+    }
+
     static String executeRequest(String address, String model) throws Exception {
-        return executeRequest(address, model, DEFAULT_CONTENT);
+        return executeRequestAvecContenu(address, model, DEFAULT_CONTENT);
     }
 
     static String executeRequestAvecFichierWord(String address, String model, String cvPath) throws Exception {
@@ -72,13 +83,17 @@ public class MonAgentCVEtLettreDeMotivation {
     }
 
     static String executeRequest(String address, String model, String cvContent) throws Exception {
+        return executeRequestAvecContenu(address, model, construireMessageUtilisateur(cvContent));
+    }
+
+    private static String executeRequestAvecContenu(String address, String model, String content) throws Exception {
         URL url = new URI(address).toURL();
         HttpURLConnection conn = (HttpURLConnection) url.openConnection();
         conn.setRequestMethod("POST");
         conn.setRequestProperty("Content-Type", "application/json");
         conn.setDoOutput(true);
         String systemPrompt = "Tu es un expert en rédaction de CV et lettres de motivation.";
-        String jsonInput = buildJsonInput(model, DEFAULT_ROLE, cvContent, systemPrompt);
+        String jsonInput = buildJsonInput(model, DEFAULT_ROLE, content, systemPrompt);
 
         // Étape 1 : Envoyer le corps de la requête
         try (OutputStream os = conn.getOutputStream()) {

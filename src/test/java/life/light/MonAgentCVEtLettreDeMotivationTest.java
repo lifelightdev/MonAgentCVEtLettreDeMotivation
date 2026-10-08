@@ -9,6 +9,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.util.Properties;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -99,6 +100,31 @@ class MonAgentCVEtLettreDeMotivationTest {
     }
 
     @Test
+    void run_utiliseLeCheminCvDesPropertiesPourEnvoyerLeContenu() throws Exception {
+        AtomicReference<String> bodyRef = new AtomicReference<>();
+
+        server = HttpServer.create(new InetSocketAddress(0), 0);
+        server.createContext("/v1/chat/completions", exchange -> {
+            captureRequest(exchange, new AtomicReference<>(), new AtomicReference<>(), bodyRef);
+            byte[] response = "{\"ok\":true}".getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, response.length);
+            exchange.getResponseBody().write(response);
+            exchange.close();
+        });
+        server.start();
+
+        Properties properties = new Properties();
+        properties.setProperty("address", "http://127.0.0.1:" + server.getAddress().getPort() + "/v1/chat/completions");
+        properties.setProperty("model", "google/gemma-4-e2b");
+        properties.setProperty("cv.path", "src/test/resources/cv.docx");
+
+        MonAgentCVEtLettreDeMotivation.run(properties);
+
+        assertTrue(bodyRef.get().contains("Jean DUPONT"), "run doit envoyer le contenu du CV configuré");
+        assertTrue(bodyRef.get().contains("Développeur Back-End Java"), "run doit envoyer le titre du CV configuré");
+    }
+
+    @Test
     void executeRequest_devraitRetournerBonjour_quandOnLuiDemandeDeDireBonjour() throws Exception {
         java.util.Properties properties = MonAgentCVEtLettreDeMotivation.loadProperties();
         String address = properties.getProperty("address");
@@ -129,6 +155,16 @@ class MonAgentCVEtLettreDeMotivationTest {
         } finally {
             server.stop(0);
         }
+    }
+
+    @Test
+    void construireMessageUtilisateur_contientLaConsigneEtLeTexteDuCv() {
+        String cvContent = "Jean DUPONT\nDéveloppeur Back-End Java";
+
+        String message = MonAgentCVEtLettreDeMotivation.construireMessageUtilisateur(cvContent);
+
+        assertTrue(message.contains("Voici mon CV :"), "Le message doit contenir la consigne");
+        assertTrue(message.contains(cvContent), "Le message doit contenir le texte brut du CV");
     }
 
     @Test
