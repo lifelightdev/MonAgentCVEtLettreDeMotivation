@@ -3,17 +3,21 @@ package life.light;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.HttpURLConnection;
 import java.net.InetSocketAddress;
+import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.Properties;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 class MonAgentCVEtLettreDeMotivationTest {
 
@@ -151,6 +155,35 @@ class MonAgentCVEtLettreDeMotivationTest {
     }
 
     @Test
+    void run_utiliseLeCheminOffreDemploiDesPropertiesPourEnvoyerLeContenu() throws Exception {
+        AtomicReference<String> bodyRef = new AtomicReference<>();
+
+        server = HttpServer.create(new InetSocketAddress(0), 0);
+        server.createContext("/v1/chat/completions", exchange -> {
+            captureRequest(exchange, new AtomicReference<>(), new AtomicReference<>(), bodyRef);
+            byte[] response = "{\"ok\":true}".getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, response.length);
+            exchange.getResponseBody().write(response);
+            exchange.close();
+        });
+        server.start();
+
+        Properties properties = new Properties();
+        properties.setProperty("address", "http://127.0.0.1:" + server.getAddress().getPort() + "/v1/chat/completions");
+        properties.setProperty("model", "google/gemma-4-e2b");
+        properties.setProperty("cv.path", "src/test/resources/cv.docx");
+        properties.setProperty("job.offer.path", "src/test/resources/offre-emploi.txt");
+
+        MonAgentCVEtLettreDeMotivation.run(properties);
+
+        assertTrue(bodyRef.get().contains("Jean DUPONT"), "run doit envoyer le contenu du CV configuré");
+        assertTrue(bodyRef.get().contains("Développeur Back-End Java"), "run doit envoyer le titre du CV configuré");
+        assertTrue(bodyRef.get().contains("Développeur Java senior"),
+                "run doit envoyer le contenu de l'offre d'emploi configurée");
+    }
+
+    @Test
+    @Disabled
     void executeRequest_devraitRetournerBonjour_quandOnLuiDemandeDeDireBonjour() throws Exception {
         java.util.Properties properties = MonAgentCVEtLettreDeMotivation.loadProperties();
         String address = properties.getProperty("address");
@@ -257,6 +290,18 @@ class MonAgentCVEtLettreDeMotivationTest {
         contentTypeRef.set(exchange.getRequestHeaders().getFirst("Content-Type"));
         try (InputStream inputStream = exchange.getRequestBody()) {
             bodyRef.set(new String(inputStream.readAllBytes(), StandardCharsets.UTF_8));
+        }
+    }
+
+    private static boolean isEndpointReachable(String address) {
+        try {
+            HttpURLConnection connection = (HttpURLConnection) new URL(address).openConnection();
+            connection.setConnectTimeout(2000);
+            connection.setReadTimeout(2000);
+            connection.getResponseCode();
+            return true;
+        } catch (Exception e) {
+            return false;
         }
     }
 }

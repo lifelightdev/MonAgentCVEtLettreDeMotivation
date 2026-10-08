@@ -29,10 +29,23 @@ public class MonAgentCVEtLettreDeMotivation {
     }
 
     static String run(Properties properties) throws Exception {
+        String cvPath = properties.getProperty("cv.path");
+        String jobOfferPath = properties.getProperty("job.offer.path");
+
+        if (jobOfferPath == null || jobOfferPath.isBlank()) {
+            return executeRequestAvecFichierWord(
+                    properties.getProperty("address"),
+                    properties.getProperty("model"),
+                    cvPath
+            );
+        }
+
+        String jobOfferContent = readTextFile(jobOfferPath);
         return executeRequestAvecFichierWord(
                 properties.getProperty("address"),
                 properties.getProperty("model"),
-                properties.getProperty("cv.path")
+                cvPath,
+                jobOfferContent
         );
     }
 
@@ -147,7 +160,26 @@ public class MonAgentCVEtLettreDeMotivation {
             return extractor.getText();
         } catch (Exception e) {
             logger.log(ERROR, "Erreur lors de la lecture du fichier Word : " + e.getMessage());
-            return ""; 
+            return "";
+        }
+    }
+
+    static String readTextFile(String filePath) {
+        try (InputStream inputStream = new FileInputStream(filePath);
+             Reader reader = new InputStreamReader(inputStream, StandardCharsets.UTF_8);
+             BufferedReader bufferedReader = new BufferedReader(reader)) {
+            StringBuilder content = new StringBuilder();
+            String line;
+            while ((line = bufferedReader.readLine()) != null) {
+                if (!content.isEmpty()) {
+                    content.append(System.lineSeparator());
+                }
+                content.append(line);
+            }
+            return content.toString();
+        } catch (Exception e) {
+            logger.log(ERROR, "Erreur lors de la lecture du fichier texte : " + e.getMessage());
+            return "";
         }
     }
 }
