@@ -73,6 +73,10 @@ public class MonAgentCVEtLettreDeMotivation {
         return "Voici mon CV :\n" + cvContent;
     }
 
+    static String construireMessageUtilisateur(String cvContent, String jobOffer) {
+        return "Voici mon CV :\n" + cvContent + "\n\nVoici l'offre d'emploi :\n" + jobOffer;
+    }
+
     static String executeRequest(String address, String model) throws Exception {
         return executeRequestAvecContenu(address, model, DEFAULT_CONTENT);
     }
@@ -82,8 +86,17 @@ public class MonAgentCVEtLettreDeMotivation {
         return executeRequest(address, model, cvContent);
     }
 
+    static String executeRequestAvecFichierWord(String address, String model, String cvPath, String jobOffer) throws Exception {
+        String cvContent = readWordFile(cvPath);
+        return executeRequest(address, model, cvContent, jobOffer);
+    }
+
     static String executeRequest(String address, String model, String cvContent) throws Exception {
         return executeRequestAvecContenu(address, model, construireMessageUtilisateur(cvContent));
+    }
+
+    static String executeRequest(String address, String model, String cvContent, String jobOffer) throws Exception {
+        return executeRequestAvecContenu(address, model, construireMessageUtilisateur(cvContent, jobOffer));
     }
 
     private static String executeRequestAvecContenu(String address, String model, String content) throws Exception {
