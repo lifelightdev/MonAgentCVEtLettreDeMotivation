@@ -54,13 +54,17 @@ public class MonAgentCVEtLettreDeMotivation {
     }
 
     static String executeRequest(String address, String model) throws Exception {
+        return executeRequest(address, model, DEFAULT_CONTENT);
+    }
+
+    static String executeRequest(String address, String model, String cvContent) throws Exception {
         URL url = new URI(address).toURL();
         HttpURLConnection conn = (HttpURLConnection) url.openConnection();
         conn.setRequestMethod("POST");
         conn.setRequestProperty("Content-Type", "application/json");
         conn.setDoOutput(true);
         String systemPrompt = "Tu es un expert en rédaction de CV et lettres de motivation.";
-        String jsonInput = buildJsonInput(model, DEFAULT_ROLE, DEFAULT_CONTENT, systemPrompt);
+        String jsonInput = buildJsonInput(model, DEFAULT_ROLE, cvContent, systemPrompt);
 
         // Étape 1 : Envoyer le corps de la requête
         try (OutputStream os = conn.getOutputStream()) {

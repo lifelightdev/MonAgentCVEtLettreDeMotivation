@@ -53,6 +53,29 @@ class MonAgentCVEtLettreDeMotivationTest {
     }
 
     @Test
+    void executeRequest_inclutLeContenuDuCvDansLeCorpsDeLaRequete() throws Exception {
+        AtomicReference<String> bodyRef = new AtomicReference<>();
+
+        server = HttpServer.create(new InetSocketAddress(0), 0);
+        server.createContext("/v1/chat/completions", exchange -> {
+            captureRequest(exchange, new AtomicReference<>(), new AtomicReference<>(), bodyRef);
+            byte[] response = "{\"ok\":true}".getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, response.length);
+            exchange.getResponseBody().write(response);
+            exchange.close();
+        });
+        server.start();
+
+        String address = "http://127.0.0.1:" + server.getAddress().getPort() + "/v1/chat/completions";
+        String cvContent = "Jean DUPONT\nDéveloppeur Back-End Java";
+
+        MonAgentCVEtLettreDeMotivation.executeRequest(address, "google/gemma-4-e2b", cvContent);
+
+        assertTrue(bodyRef.get().contains("Jean DUPONT"), "Le corps doit contenir le nom du CV");
+        assertTrue(bodyRef.get().contains("Développeur Back-End Java"), "Le corps doit contenir le titre du CV");
+    }
+
+    @Test
     void executeRequest_devraitRetournerBonjour_quandOnLuiDemandeDeDireBonjour() throws Exception {
         java.util.Properties properties = MonAgentCVEtLettreDeMotivation.loadProperties();
         String address = properties.getProperty("address");
