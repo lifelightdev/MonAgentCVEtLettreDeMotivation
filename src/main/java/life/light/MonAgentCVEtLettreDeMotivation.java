@@ -121,37 +121,47 @@ public class MonAgentCVEtLettreDeMotivation {
     ) throws IOException {
         String cvOutputPath = properties.getProperty("cv.output.path");
         String letterOutputPath = properties.getProperty("letter.output.path");
+        String analysisOutputPath = properties.getProperty("analysis.output.path");
         boolean hasCvOutputPath = cvOutputPath != null && !cvOutputPath.isBlank();
         boolean hasLetterOutputPath = letterOutputPath != null && !letterOutputPath.isBlank();
+        boolean hasAnalysisOutputPath = analysisOutputPath != null && !analysisOutputPath.isBlank();
         if (hasCvOutputPath != hasLetterOutputPath) {
             throw new IllegalArgumentException(
                     "Les propriétés cv.output.path et letter.output.path doivent être définies ensemble."
             );
         }
-        if (!hasCvOutputPath) {
+        if (!hasCvOutputPath && !hasAnalysisOutputPath) {
             return;
         }
 
-        GeneratedDocuments documents = splitGeneratedDocuments(response);
-        Path cvOutput = Path.of(cvOutputPath);
-        if (cvOutput.toAbsolutePath().normalize()
-                .equals(Path.of(cvTemplatePath).toAbsolutePath().normalize())) {
-            throw new IllegalArgumentException("cv.output.path doit être différent de cv.path pour préserver le CV original.");
+        GeneratedDocuments documents = splitGeneratedDocuments(response, hasAnalysisOutputPath);
+        if (hasCvOutputPath) {
+            Path cvOutput = Path.of(cvOutputPath);
+            if (cvOutput.toAbsolutePath().normalize()
+                    .equals(Path.of(cvTemplatePath).toAbsolutePath().normalize())) {
+                throw new IllegalArgumentException("cv.output.path doit être différent de cv.path pour préserver le CV original.");
+            }
+            writeCvFile(cvOutput, documents.cv(), Path.of(cvTemplatePath));
+            writeTextFile(Path.of(letterOutputPath), documents.letter());
         }
-        writeCvFile(cvOutput, documents.cv(), Path.of(cvTemplatePath));
-        writeTextFile(Path.of(letterOutputPath), documents.letter());
+        if (hasAnalysisOutputPath) {
+            writeTextFile(Path.of(analysisOutputPath), documents.analysis());
+        }
     }
 
-    private static GeneratedDocuments splitGeneratedDocuments(String response) {
+    private static GeneratedDocuments splitGeneratedDocuments(String response, boolean requireAnalysis) {
         String[] lines = response.split("\\R");
         int cvHeadingIndex = -1;
         int letterHeadingIndex = -1;
+        int analysisHeadingIndex = -1;
         for (int i = 0; i < lines.length; i++) {
             String heading = normalizeHeading(lines[i]);
             if (heading.equalsIgnoreCase("CV adapté")) {
                 cvHeadingIndex = i;
             } else if (heading.equalsIgnoreCase("Lettre de motivation")) {
                 letterHeadingIndex = i;
+            } else if (heading.equalsIgnoreCase("Analyse de correspondance")) {
+                analysisHeadingIndex = i;
             }
         }
         if (cvHeadingIndex < 0 || letterHeadingIndex <= cvHeadingIndex) {
@@ -159,13 +169,30 @@ public class MonAgentCVEtLettreDeMotivation {
                     "La réponse doit contenir les sections « CV adapté » puis « Lettre de motivation »."
             );
         }
+        if (analysisHeadingIndex >= 0 && analysisHeadingIndex <= letterHeadingIndex) {
+            throw new IllegalArgumentException(
+                    "La section « Analyse de correspondance » doit suivre la lettre de motivation."
+            );
+        }
+        if (requireAnalysis && analysisHeadingIndex < 0) {
+            throw new IllegalArgumentException(
+                    "La réponse doit contenir la section « Analyse de correspondance » pour écrire le rapport demandé."
+            );
+        }
 
         String cv = String.join("\n", Arrays.copyOfRange(lines, cvHeadingIndex + 1, letterHeadingIndex)).strip();
-        String letter = String.join("\n", Arrays.copyOfRange(lines, letterHeadingIndex + 1, lines.length)).strip();
+        int letterEndIndex = analysisHeadingIndex < 0 ? lines.length : analysisHeadingIndex;
+        String letter = String.join("\n", Arrays.copyOfRange(lines, letterHeadingIndex + 1, letterEndIndex)).strip();
+        String analysis = analysisHeadingIndex < 0
+                ? ""
+                : String.join("\n", Arrays.copyOfRange(lines, analysisHeadingIndex + 1, lines.length)).strip();
         if (cv.isEmpty() || letter.isEmpty()) {
             throw new IllegalArgumentException("Les sections générées du CV et de la lettre doivent être non vides.");
         }
-        return new GeneratedDocuments(cv, letter);
+        if (requireAnalysis && analysis.isEmpty()) {
+            throw new IllegalArgumentException("L'analyse de correspondance générée doit être non vide.");
+        }
+        return new GeneratedDocuments(cv, letter, analysis);
     }
 
     private static String normalizeHeading(String line) {
@@ -253,7 +280,7 @@ public class MonAgentCVEtLettreDeMotivation {
         }
     }
 
-    private record GeneratedDocuments(String cv, String letter) {}
+    private record GeneratedDocuments(String cv, String letter, String analysis) {}
 
     static Properties loadProperties() throws Exception {
         Properties properties = new Properties();
@@ -336,6 +363,12 @@ public class MonAgentCVEtLettreDeMotivation {
                 Rédige une lettre de motivation personnalisée en faisant le lien entre mon parcours, ma motivation personnelle et les besoins de l'offre.
                 N'invente pas de motivation ; si aucune motivation personnelle n'est fournie, reste factuel et base-toi sur le CV et l'offre.
                 N'ajoute aucune introduction avant « CV adapté » ni aucun autre titre de section entre ces deux sections.
+
+                Analyse de correspondance
+                Termine par un tableau Markdown avec les colonnes « Exigence de l'offre », « Preuve exacte dans le CV » et « État ».
+                Pour chaque exigence importante de l'offre, cite un élément réellement présent dans le CV ou écris exactement « Aucune preuve dans le CV fourni ».
+                Indique « Correspondance » uniquement si le CV fournit une preuve explicite ; sinon indique « À clarifier ».
+                N'invente aucune expérience, compétence, réalisation ou correspondance.
                 """;
         return message;
     }

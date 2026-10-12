@@ -9,6 +9,7 @@ import org.apache.poi.xwpf.usermodel.XWPFRun;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
@@ -235,6 +236,59 @@ class MonAgentCVEtLettreDeMotivationTest {
                 "Le prompt doit transmettre la motivation personnelle du candidat");
         assertTrue(bodyRef.get().contains("J'ai réduit de 30 % les incidents en production."),
                 "Le prompt doit transmettre les réalisations que le candidat souhaite mettre en avant");
+    }
+
+    @Test
+    void run_enregistreLesCorrespondancesEntreOffreEtCvEtSignaleLesPreuvesManquantes() throws Exception {
+        String generatedContent = """
+                CV adapté
+                Expérience Java et Spring
+
+                Lettre de motivation
+                Madame, Monsieur,
+                Mon expérience Java répond à vos besoins.
+
+                Analyse de correspondance
+                | Exigence de l'offre | Preuve dans le CV | État |
+                | Java et Spring | Expérience de développement Java et Spring | Correspondance |
+                | Expérience bancaire | Aucune preuve dans le CV fourni | À clarifier |
+                """.stripTrailing();
+
+        AtomicReference<String> bodyRef = new AtomicReference<>();
+        server = HttpServer.create(new InetSocketAddress(0), 0);
+        server.createContext("/v1/chat/completions", exchange -> {
+            captureRequest(exchange, new AtomicReference<>(), new AtomicReference<>(), bodyRef);
+            byte[] response = ("{\"choices\":[{\"message\":{\"content\":\""
+                    + generatedContent.replace("\n", "\\n")
+                    + "\"}}]}")
+                    .getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, response.length);
+            exchange.getResponseBody().write(response);
+            exchange.close();
+        });
+        server.start();
+
+        Path offerPath = tempDir.resolve("offre.txt");
+        Files.writeString(offerPath, "Java et Spring obligatoires. Expérience bancaire souhaitée.");
+        Path analysisPath = tempDir.resolve("analyse-candidature.txt");
+        Properties properties = new Properties();
+        properties.setProperty("address", "http://127.0.0.1:" + server.getAddress().getPort() + "/v1/chat/completions");
+        properties.setProperty("model", "google/gemma-4-e2b");
+        properties.setProperty("cv.path", "src/test/resources/cv.docx");
+        properties.setProperty("job.offer.path", offerPath.toString());
+        properties.setProperty("analysis.output.path", analysisPath.toString());
+
+        MonAgentCVEtLettreDeMotivation.run(properties);
+
+        String analysis = Files.readString(analysisPath);
+        assertTrue(analysis.contains("Java et Spring"), "L'analyse doit inclure les exigences de l'offre");
+        assertTrue(analysis.contains("Expérience de développement Java et Spring"),
+                "L'analyse doit associer une exigence à une preuve du CV");
+        assertTrue(analysis.contains("Expérience bancaire"), "L'analyse doit faire apparaître les exigences non prouvées");
+        assertTrue(analysis.contains("Aucune preuve dans le CV fourni"),
+                "L'analyse doit signaler explicitement l'absence de preuve au lieu d'en inventer une");
+        assertTrue(bodyRef.get().contains("Analyse de correspondance"));
+        assertTrue(bodyRef.get().contains("Preuve exacte dans le CV"));
     }
 
     @Test
@@ -483,7 +537,7 @@ class MonAgentCVEtLettreDeMotivationTest {
     }
 
     @Test
-        //@EnabledIfSystemProperty(named = "runLmStudioIntegration", matches = "true")
+    @EnabledIfSystemProperty(named = "runLmStudioIntegration", matches = "true")
     void run_genereLesDocumentsAvecLeVraiModeleLmStudio() throws Exception {
         Properties properties = MonAgentCVEtLettreDeMotivation.loadProperties();
         Path originalCvPath = tempDir.resolve("cv-synthetique.docx");
@@ -501,16 +555,19 @@ class MonAgentCVEtLettreDeMotivationTest {
         String candidateMotivation = "Je veux créer des outils numériques qui améliorent le suivi des patients.";
         Files.writeString(
                 jobOfferPath,
-                "Nous recherchons une développeuse Java maîtrisant Spring et SQL.",
+                "Nous recherchons une développeuse Java maîtrisant Spring et SQL. "
+                        + "Une expérience en gestion d'établissements hospitaliers est indispensable.",
                 StandardCharsets.UTF_8
         );
         Path cvOutputPath = tempDir.resolve("resultats/cv-adapte.docx");
         Path letterOutputPath = tempDir.resolve("resultats/lettre-motivation.docx");
+        Path analysisOutputPath = tempDir.resolve("resultats/analyse-candidature.txt");
         properties.setProperty("cv.path", originalCvPath.toString());
         properties.setProperty("job.offer.path", jobOfferPath.toString());
         properties.setProperty("candidate.motivation", candidateMotivation);
         properties.setProperty("cv.output.path", cvOutputPath.toString());
         properties.setProperty("letter.output.path", letterOutputPath.toString());
+        properties.setProperty("analysis.output.path", analysisOutputPath.toString());
 
         String response = MonAgentCVEtLettreDeMotivation.run(properties);
 
@@ -519,10 +576,13 @@ class MonAgentCVEtLettreDeMotivationTest {
                 "La réponse réelle doit contenir la section Lettre de motivation");
         assertTrue(Files.size(cvOutputPath) > 0, "Le vrai agent doit créer le document Word du CV");
         assertTrue(Files.size(letterOutputPath) > 0, "Le vrai agent doit créer le document Word de la lettre");
+        assertTrue(Files.size(analysisOutputPath) > 0, "Le vrai agent doit créer le rapport de correspondance");
         assertTrue(readDocxText(cvOutputPath).contains("Camille Exemple"),
                 "Le CV adapté doit reprendre l'identité synthétique fournie. Réponse : " + response);
         assertTrue(response.toLowerCase(Locale.ROOT).contains("suivi des patients"),
                 "La lettre générée doit refléter la motivation personnelle fournie. Réponse : " + response);
+        assertTrue(Files.readString(analysisOutputPath).contains("Aucune preuve dans le CV fourni"),
+                "Le rapport doit signaler l'absence de preuve pour l'expérience hospitalière. Réponse : " + response);
         assertArrayEquals(originalCvBytes, Files.readAllBytes(originalCvPath),
                 "Le vrai agent ne doit pas modifier le CV source");
     }
