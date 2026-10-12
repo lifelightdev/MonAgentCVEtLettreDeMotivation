@@ -11,11 +11,14 @@ import java.util.Properties;
 import static java.lang.System.Logger.Level.ERROR;
 import static java.lang.System.Logger.Level.INFO;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.poi.xwpf.extractor.XWPFWordExtractor;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
 
 public class MonAgentCVEtLettreDeMotivation {
     private static final System.Logger logger = System.getLogger(MonAgentCVEtLettreDeMotivation.class.getName());
+    private static final ObjectMapper objectMapper = new ObjectMapper();
     private static final String DEFAULT_ROLE = "user";
     private static final String DEFAULT_CONTENT = "Dis-moi simplement bonjour en un seul mot et en Francais";
 
@@ -91,7 +94,16 @@ public class MonAgentCVEtLettreDeMotivation {
         if (jobOffer != null && !jobOffer.isBlank()) {
             message += "\n\nVoici l'offre d'emploi :\n" + jobOffer;
         }
-        message += "\n\nRédige-moi une lettre de motivation adaptée à cette offre.";
+        message += """
+
+                À partir de mon CV et de l'offre d'emploi, rédige les deux sections suivantes :
+
+                CV adapté
+                Propose une version de mon CV adaptée à l'offre, sans inventer d'expérience, de compétence ou de diplôme.
+
+                Lettre de motivation
+                Rédige une lettre de motivation personnalisée en faisant le lien entre mon parcours et les besoins de l'offre.
+                """;
         return message;
     }
 
@@ -143,7 +155,13 @@ public class MonAgentCVEtLettreDeMotivation {
                 while ((line = br.readLine()) != null) {
                     response.append(line.trim());
                 }
-                return response.toString();
+                String responseBody = response.toString();
+                JsonNode contentNode = objectMapper.readTree(responseBody)
+                        .path("choices")
+                        .path(0)
+                        .path("message")
+                        .path("content");
+                return contentNode.isTextual() ? contentNode.textValue() : responseBody;
             }
         } else {
             // Échec : Lire le flux d'erreur si disponible

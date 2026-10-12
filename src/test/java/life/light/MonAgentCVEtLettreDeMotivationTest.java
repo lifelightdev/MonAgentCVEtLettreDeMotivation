@@ -57,6 +57,26 @@ class MonAgentCVEtLettreDeMotivationTest {
     }
 
     @Test
+    void executeRequest_retourneLeContenuDuMessageDeLaReponseJson() throws Exception {
+        String generatedLetter = "Madame, Monsieur,\nJe vous adresse ma candidature.";
+
+        server = HttpServer.create(new InetSocketAddress(0), 0);
+        server.createContext("/v1/chat/completions", exchange -> {
+            byte[] response = "{\"choices\":[{\"message\":{\"content\":\"Madame, Monsieur,\\nJe vous adresse ma candidature.\"}}]}"
+                    .getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, response.length);
+            exchange.getResponseBody().write(response);
+            exchange.close();
+        });
+        server.start();
+
+        String address = "http://127.0.0.1:" + server.getAddress().getPort() + "/v1/chat/completions";
+        String response = MonAgentCVEtLettreDeMotivation.executeRequest(address, "google/gemma-4-e2b");
+
+        assertEquals(generatedLetter, response);
+    }
+
+    @Test
     void executeRequest_inclutLeContenuDuCvDansLeCorpsDeLaRequete() throws Exception {
         AtomicReference<String> bodyRef = new AtomicReference<>();
 
@@ -237,6 +257,20 @@ class MonAgentCVEtLettreDeMotivationTest {
         assertTrue(message.contains("Voici l'offre d'emploi :"), "Le message doit contenir l'offre d'emploi");
         assertTrue(message.contains(offreEmploi), "Le message doit contenir le texte brut de l'offre");
         assertTrue(message.contains("lettre de motivation"), "Le message doit demander la rédaction d'une lettre de motivation");
+    }
+
+    @Test
+    void construireMessageUtilisateur_demandeUnCvAdapteEtUneLettreDansDesSectionsDistinctes() {
+        String cvContent = "Jean DUPONT\nDéveloppeur Java";
+        String offreEmploi = "Développeur Java senior";
+
+        String message = MonAgentCVEtLettreDeMotivation.construireMessageUtilisateur(cvContent, offreEmploi);
+
+        assertTrue(message.contains("CV adapté"), "Le message doit demander un CV adapté à l'offre");
+        assertTrue(message.contains("Lettre de motivation"),
+                "Le message doit demander une lettre de motivation");
+        assertTrue(message.indexOf("CV adapté") < message.indexOf("Lettre de motivation"),
+                "Le CV adapté et la lettre doivent être demandés dans cet ordre comme sections distinctes");
     }
 
     @Test
