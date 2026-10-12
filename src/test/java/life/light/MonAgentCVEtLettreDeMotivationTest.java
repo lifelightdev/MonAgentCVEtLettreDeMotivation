@@ -9,7 +9,6 @@ import org.apache.poi.xwpf.usermodel.XWPFRun;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
@@ -18,6 +17,7 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Locale;
 import java.util.Properties;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -483,7 +483,7 @@ class MonAgentCVEtLettreDeMotivationTest {
     }
 
     @Test
-    @EnabledIfSystemProperty(named = "runLmStudioIntegration", matches = "true")
+        //@EnabledIfSystemProperty(named = "runLmStudioIntegration", matches = "true")
     void run_genereLesDocumentsAvecLeVraiModeleLmStudio() throws Exception {
         Properties properties = MonAgentCVEtLettreDeMotivation.loadProperties();
         Path originalCvPath = tempDir.resolve("cv-synthetique.docx");
@@ -498,6 +498,7 @@ class MonAgentCVEtLettreDeMotivationTest {
         byte[] originalCvBytes = Files.readAllBytes(originalCvPath);
 
         Path jobOfferPath = tempDir.resolve("offre-synthetique.txt");
+        String candidateMotivation = "Je veux créer des outils numériques qui améliorent le suivi des patients.";
         Files.writeString(
                 jobOfferPath,
                 "Nous recherchons une développeuse Java maîtrisant Spring et SQL.",
@@ -507,6 +508,7 @@ class MonAgentCVEtLettreDeMotivationTest {
         Path letterOutputPath = tempDir.resolve("resultats/lettre-motivation.docx");
         properties.setProperty("cv.path", originalCvPath.toString());
         properties.setProperty("job.offer.path", jobOfferPath.toString());
+        properties.setProperty("candidate.motivation", candidateMotivation);
         properties.setProperty("cv.output.path", cvOutputPath.toString());
         properties.setProperty("letter.output.path", letterOutputPath.toString());
 
@@ -519,6 +521,8 @@ class MonAgentCVEtLettreDeMotivationTest {
         assertTrue(Files.size(letterOutputPath) > 0, "Le vrai agent doit créer le document Word de la lettre");
         assertTrue(readDocxText(cvOutputPath).contains("Camille Exemple"),
                 "Le CV adapté doit reprendre l'identité synthétique fournie. Réponse : " + response);
+        assertTrue(response.toLowerCase(Locale.ROOT).contains("suivi des patients"),
+                "La lettre générée doit refléter la motivation personnelle fournie. Réponse : " + response);
         assertArrayEquals(originalCvBytes, Files.readAllBytes(originalCvPath),
                 "Le vrai agent ne doit pas modifier le CV source");
     }
