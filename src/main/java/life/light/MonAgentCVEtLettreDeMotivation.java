@@ -5,6 +5,9 @@ import java.net.HttpURLConnection;
 import java.net.URI;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.Objects;
 import java.util.Properties;
 
@@ -35,22 +38,88 @@ public class MonAgentCVEtLettreDeMotivation {
         String cvPath = properties.getProperty("cv.path");
         String jobOfferPath = properties.getProperty("job.offer.path");
 
+        String response;
         if (jobOfferPath == null || jobOfferPath.isBlank()) {
-            return executeRequestAvecFichierWord(
+            response = executeRequestAvecFichierWord(
                     properties.getProperty("address"),
                     properties.getProperty("model"),
                     cvPath
             );
+        } else {
+            String jobOfferContent = readTextFile(jobOfferPath);
+            response = executeRequestAvecFichierWord(
+                    properties.getProperty("address"),
+                    properties.getProperty("model"),
+                    cvPath,
+                    jobOfferContent
+            );
         }
 
-        String jobOfferContent = readTextFile(jobOfferPath);
-        return executeRequestAvecFichierWord(
-                properties.getProperty("address"),
-                properties.getProperty("model"),
-                cvPath,
-                jobOfferContent
-        );
+        writeOutputFilesIfConfigured(response, properties);
+        return response;
     }
+
+    private static void writeOutputFilesIfConfigured(String response, Properties properties) throws IOException {
+        String cvOutputPath = properties.getProperty("cv.output.path");
+        String letterOutputPath = properties.getProperty("letter.output.path");
+        boolean hasCvOutputPath = cvOutputPath != null && !cvOutputPath.isBlank();
+        boolean hasLetterOutputPath = letterOutputPath != null && !letterOutputPath.isBlank();
+        if (hasCvOutputPath != hasLetterOutputPath) {
+            throw new IllegalArgumentException(
+                    "Les propriétés cv.output.path et letter.output.path doivent être définies ensemble."
+            );
+        }
+        if (!hasCvOutputPath) {
+            return;
+        }
+
+        GeneratedDocuments documents = splitGeneratedDocuments(response);
+        writeTextFile(Path.of(cvOutputPath), documents.cv());
+        writeTextFile(Path.of(letterOutputPath), documents.letter());
+    }
+
+    private static GeneratedDocuments splitGeneratedDocuments(String response) {
+        String[] lines = response.split("\\R");
+        int cvHeadingIndex = -1;
+        int letterHeadingIndex = -1;
+        for (int i = 0; i < lines.length; i++) {
+            String heading = normalizeHeading(lines[i]);
+            if (heading.equalsIgnoreCase("CV adapté")) {
+                cvHeadingIndex = i;
+            } else if (heading.equalsIgnoreCase("Lettre de motivation")) {
+                letterHeadingIndex = i;
+            }
+        }
+        if (cvHeadingIndex < 0 || letterHeadingIndex <= cvHeadingIndex) {
+            throw new IllegalArgumentException(
+                    "La réponse doit contenir les sections « CV adapté » puis « Lettre de motivation »."
+            );
+        }
+
+        String cv = String.join("\n", Arrays.copyOfRange(lines, cvHeadingIndex + 1, letterHeadingIndex)).strip();
+        String letter = String.join("\n", Arrays.copyOfRange(lines, letterHeadingIndex + 1, lines.length)).strip();
+        if (cv.isEmpty() || letter.isEmpty()) {
+            throw new IllegalArgumentException("Les sections générées du CV et de la lettre doivent être non vides.");
+        }
+        return new GeneratedDocuments(cv, letter);
+    }
+
+    private static String normalizeHeading(String line) {
+        return line.strip()
+                .replaceAll("^[#*\\s]+|[#*\\s]+$", "")
+                .replaceAll(":$", "")
+                .strip();
+    }
+
+    private static void writeTextFile(Path outputPath, String content) throws IOException {
+        Path parent = outputPath.toAbsolutePath().getParent();
+        if (parent != null) {
+            Files.createDirectories(parent);
+        }
+        Files.writeString(outputPath, content, StandardCharsets.UTF_8);
+    }
+
+    private record GeneratedDocuments(String cv, String letter) {}
 
     static Properties loadProperties() throws Exception {
         Properties properties = new Properties();

@@ -5,12 +5,15 @@ import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.InetSocketAddress;
 import java.net.URL;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.charset.StandardCharsets;
 import java.util.Properties;
 import java.util.concurrent.atomic.AtomicReference;
@@ -19,6 +22,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class MonAgentCVEtLettreDeMotivationTest {
+
+    @TempDir
+    Path tempDir;
 
     private HttpServer server;
 
@@ -199,6 +205,45 @@ class MonAgentCVEtLettreDeMotivationTest {
         assertTrue(bodyRef.get().contains("Développeur Back-End Java"), "run doit envoyer le titre du CV configuré");
         assertTrue(bodyRef.get().contains("Développeur Java senior"),
                 "run doit envoyer le contenu de l'offre d'emploi configurée");
+    }
+
+    @Test
+    void run_ecritLeCvEtLaLettreDansDeuxFichiersDistincts() throws Exception {
+        String generatedContent = """
+                CV adapté
+                Jean DUPONT - Développeur Java
+
+                Lettre de motivation
+                Madame, Monsieur,
+                Je vous adresse ma candidature.
+                """.stripTrailing();
+
+        server = HttpServer.create(new InetSocketAddress(0), 0);
+        server.createContext("/v1/chat/completions", exchange -> {
+            byte[] response = ("{\"choices\":[{\"message\":{\"content\":\""
+                    + generatedContent.replace("\n", "\\n")
+                    + "\"}}]}")
+                    .getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, response.length);
+            exchange.getResponseBody().write(response);
+            exchange.close();
+        });
+        server.start();
+
+        Path cvOutputPath = tempDir.resolve("cv-adapte.txt");
+        Path letterOutputPath = tempDir.resolve("lettre-motivation.txt");
+        Properties properties = new Properties();
+        properties.setProperty("address", "http://127.0.0.1:" + server.getAddress().getPort() + "/v1/chat/completions");
+        properties.setProperty("model", "google/gemma-4-e2b");
+        properties.setProperty("cv.path", "src/test/resources/cv.docx");
+        properties.setProperty("job.offer.path", "src/test/resources/offre-emploi.txt");
+        properties.setProperty("cv.output.path", cvOutputPath.toString());
+        properties.setProperty("letter.output.path", letterOutputPath.toString());
+
+        MonAgentCVEtLettreDeMotivation.run(properties);
+
+        assertEquals("Jean DUPONT - Développeur Java", Files.readString(cvOutputPath));
+        assertEquals("Madame, Monsieur,\nJe vous adresse ma candidature.", Files.readString(letterOutputPath));
     }
 
     @Test
