@@ -210,6 +210,34 @@ class MonAgentCVEtLettreDeMotivationTest {
     }
 
     @Test
+    void run_integreLaMotivationEtLesRealisationsDuCandidatDansLaRequete() throws Exception {
+        AtomicReference<String> bodyRef = new AtomicReference<>();
+        server = HttpServer.create(new InetSocketAddress(0), 0);
+        server.createContext("/v1/chat/completions", exchange -> {
+            captureRequest(exchange, new AtomicReference<>(), new AtomicReference<>(), bodyRef);
+            byte[] response = "{\"ok\":true}".getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, response.length);
+            exchange.getResponseBody().write(response);
+            exchange.close();
+        });
+        server.start();
+
+        Properties properties = new Properties();
+        properties.setProperty("address", "http://127.0.0.1:" + server.getAddress().getPort() + "/v1/chat/completions");
+        properties.setProperty("model", "google/gemma-4-e2b");
+        properties.setProperty("cv.path", "src/test/resources/cv.docx");
+        properties.setProperty("candidate.motivation", "Je souhaite contribuer à des produits utiles aux patients.");
+        properties.setProperty("candidate.highlights", "J'ai réduit de 30 % les incidents en production.");
+
+        MonAgentCVEtLettreDeMotivation.run(properties);
+
+        assertTrue(bodyRef.get().contains("Je souhaite contribuer à des produits utiles aux patients."),
+                "Le prompt doit transmettre la motivation personnelle du candidat");
+        assertTrue(bodyRef.get().contains("J'ai réduit de 30 % les incidents en production."),
+                "Le prompt doit transmettre les réalisations que le candidat souhaite mettre en avant");
+    }
+
+    @Test
     void run_recupereLeContexteDuSiteEntrepriseEtLinclutDansLaRequete() throws Exception {
         AtomicReference<String> bodyRef = new AtomicReference<>();
         server = HttpServer.create(new InetSocketAddress(0), 0);
