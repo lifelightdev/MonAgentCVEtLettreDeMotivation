@@ -2,6 +2,8 @@ package life.light;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
+import org.apache.poi.xwpf.usermodel.XWPFParagraph;
+import org.apache.poi.xwpf.usermodel.XWPFRun;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
@@ -23,6 +25,7 @@ import org.apache.poi.xwpf.usermodel.XWPFDocument;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 
 class MonAgentCVEtLettreDeMotivationTest {
 
@@ -288,11 +291,73 @@ class MonAgentCVEtLettreDeMotivationTest {
         assertEquals("Madame, Monsieur,\nJe vous adresse ma candidature.", readDocxText(letterOutputPath));
     }
 
+    @Test
+    void run_preserveLeCvOriginalEtSaMiseEnFormeDansLaCopieWord() throws Exception {
+        Path originalCvPath = tempDir.resolve("cv-original.docx");
+        try (XWPFDocument original = new XWPFDocument()) {
+            XWPFParagraph title = original.createParagraph();
+            title.createRun().setBold(true);
+            title.getRuns().getFirst().setText("CV original");
+            original.createParagraph().createRun().setText("Expérience professionnelle");
+            try (var outputStream = Files.newOutputStream(originalCvPath)) {
+                original.write(outputStream);
+            }
+        }
+        byte[] originalBytes = Files.readAllBytes(originalCvPath);
+
+        String generatedContent = """
+                CV adapté
+                Jean DUPONT - Développeur Java
+
+                Lettre de motivation
+                Madame, Monsieur,
+                Je vous adresse ma candidature.
+                """.stripTrailing();
+        server = HttpServer.create(new InetSocketAddress(0), 0);
+        server.createContext("/v1/chat/completions", exchange -> {
+            byte[] response = ("{\"choices\":[{\"message\":{\"content\":\""
+                    + generatedContent.replace("\n", "\\n")
+                    + "\"}}]}")
+                    .getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, response.length);
+            exchange.getResponseBody().write(response);
+            exchange.close();
+        });
+        server.start();
+
+        Path cvOutputPath = tempDir.resolve("cv-adapte.docx");
+        Path letterOutputPath = tempDir.resolve("lettre-motivation.docx");
+        Properties properties = new Properties();
+        properties.setProperty("address", "http://127.0.0.1:" + server.getAddress().getPort() + "/v1/chat/completions");
+        properties.setProperty("model", "google/gemma-4-e2b");
+        properties.setProperty("cv.path", originalCvPath.toString());
+        properties.setProperty("job.offer.path", "src/test/resources/offre-emploi.txt");
+        properties.setProperty("cv.output.path", cvOutputPath.toString());
+        properties.setProperty("letter.output.path", letterOutputPath.toString());
+
+        MonAgentCVEtLettreDeMotivation.run(properties);
+
+        assertArrayEquals(originalBytes, Files.readAllBytes(originalCvPath),
+                "Le fichier CV source ne doit pas être modifié");
+        assertTrue(readDocxText(cvOutputPath).contains("Jean DUPONT - Développeur Java"),
+                "La copie doit contenir le CV adapté généré");
+        assertTrue(hasBoldRun(cvOutputPath), "La copie du CV doit conserver une mise en forme en gras");
+    }
+
     private static String readDocxText(Path path) throws IOException {
         try (InputStream inputStream = Files.newInputStream(path);
              XWPFDocument document = new XWPFDocument(inputStream);
              XWPFWordExtractor extractor = new XWPFWordExtractor(document)) {
             return extractor.getText().stripTrailing();
+        }
+    }
+
+    private static boolean hasBoldRun(Path path) throws IOException {
+        try (InputStream inputStream = Files.newInputStream(path);
+             XWPFDocument document = new XWPFDocument(inputStream)) {
+            return document.getParagraphs().stream()
+                    .flatMap(paragraph -> paragraph.getRuns().stream())
+                    .anyMatch(XWPFRun::isBold);
         }
     }
 

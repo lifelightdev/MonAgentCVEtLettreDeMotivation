@@ -7,7 +7,9 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Properties;
@@ -18,7 +20,12 @@ import static java.lang.System.Logger.Level.INFO;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.poi.xwpf.extractor.XWPFWordExtractor;
+import org.apache.poi.xwpf.usermodel.IBodyElement;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
+import org.apache.poi.xwpf.usermodel.XWPFParagraph;
+import org.apache.poi.xwpf.usermodel.XWPFRun;
+import org.apache.poi.xwpf.usermodel.XWPFTable;
+import org.apache.poi.xwpf.usermodel.XWPFTableCell;
 
 public class MonAgentCVEtLettreDeMotivation {
     private static final System.Logger logger = System.getLogger(MonAgentCVEtLettreDeMotivation.class.getName());
@@ -56,11 +63,15 @@ public class MonAgentCVEtLettreDeMotivation {
             );
         }
 
-        writeOutputFilesIfConfigured(response, properties);
+        writeOutputFilesIfConfigured(response, properties, cvPath);
         return response;
     }
 
-    private static void writeOutputFilesIfConfigured(String response, Properties properties) throws IOException {
+    private static void writeOutputFilesIfConfigured(
+            String response,
+            Properties properties,
+            String cvTemplatePath
+    ) throws IOException {
         String cvOutputPath = properties.getProperty("cv.output.path");
         String letterOutputPath = properties.getProperty("letter.output.path");
         boolean hasCvOutputPath = cvOutputPath != null && !cvOutputPath.isBlank();
@@ -75,7 +86,12 @@ public class MonAgentCVEtLettreDeMotivation {
         }
 
         GeneratedDocuments documents = splitGeneratedDocuments(response);
-        writeTextFile(Path.of(cvOutputPath), documents.cv());
+        Path cvOutput = Path.of(cvOutputPath);
+        if (cvOutput.toAbsolutePath().normalize()
+                .equals(Path.of(cvTemplatePath).toAbsolutePath().normalize())) {
+            throw new IllegalArgumentException("cv.output.path doit être différent de cv.path pour préserver le CV original.");
+        }
+        writeCvFile(cvOutput, documents.cv(), Path.of(cvTemplatePath));
         writeTextFile(Path.of(letterOutputPath), documents.letter());
     }
 
@@ -124,6 +140,18 @@ public class MonAgentCVEtLettreDeMotivation {
         }
     }
 
+    private static void writeCvFile(Path outputPath, String content, Path templatePath) throws IOException {
+        Path parent = outputPath.toAbsolutePath().getParent();
+        if (parent != null) {
+            Files.createDirectories(parent);
+        }
+        if (outputPath.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".docx")) {
+            writeWordFile(outputPath, content, templatePath);
+        } else {
+            Files.writeString(outputPath, content, StandardCharsets.UTF_8);
+        }
+    }
+
     private static void writeWordFile(Path outputPath, String content) throws IOException {
         try (XWPFDocument document = new XWPFDocument();
              OutputStream outputStream = Files.newOutputStream(outputPath)) {
@@ -131,6 +159,49 @@ public class MonAgentCVEtLettreDeMotivation {
                 document.createParagraph().createRun().setText(line);
             }
             document.write(outputStream);
+        }
+    }
+
+    private static void writeWordFile(Path outputPath, String content, Path templatePath) throws IOException {
+        try (InputStream inputStream = Files.newInputStream(templatePath);
+             XWPFDocument document = new XWPFDocument(inputStream);
+             OutputStream outputStream = Files.newOutputStream(outputPath)) {
+            String[] lines = content.split("\\R", -1);
+            List<XWPFParagraph> paragraphs = new ArrayList<>();
+            collectBodyParagraphs(paragraphs, document.getBodyElements());
+            for (int i = 0; i < Math.max(lines.length, paragraphs.size()); i++) {
+                XWPFParagraph paragraph = i < paragraphs.size()
+                        ? paragraphs.get(i)
+                        : document.createParagraph();
+                replaceParagraphText(paragraph, i < lines.length ? lines[i] : "");
+            }
+            document.write(outputStream);
+        }
+    }
+
+    private static void collectBodyParagraphs(List<XWPFParagraph> paragraphs, List<IBodyElement> bodyElements) {
+        for (IBodyElement bodyElement : bodyElements) {
+            if (bodyElement instanceof XWPFParagraph paragraph) {
+                paragraphs.add(paragraph);
+            } else if (bodyElement instanceof XWPFTable table) {
+                for (var row : table.getRows()) {
+                    for (XWPFTableCell cell : row.getTableCells()) {
+                        collectBodyParagraphs(paragraphs, cell.getBodyElements());
+                    }
+                }
+            }
+        }
+    }
+
+    private static void replaceParagraphText(XWPFParagraph paragraph, String text) {
+        List<XWPFRun> runs = paragraph.getRuns();
+        XWPFRun firstRun = runs.isEmpty() ? paragraph.createRun() : runs.getFirst();
+        firstRun.setText(text, 0);
+        for (int textIndex = firstRun.getCTR().sizeOfTArray() - 1; textIndex > 0; textIndex--) {
+            firstRun.getCTR().removeT(textIndex);
+        }
+        for (int runIndex = runs.size() - 1; runIndex > 0; runIndex--) {
+            paragraph.removeRun(runIndex);
         }
     }
 
@@ -261,9 +332,9 @@ public class MonAgentCVEtLettreDeMotivation {
     }
 
     public static String readWordFile(String testFilePath) {
-        try {
-            XWPFDocument document = new XWPFDocument(new FileInputStream(testFilePath));
-            XWPFWordExtractor extractor = new XWPFWordExtractor(document);
+        try (InputStream inputStream = Files.newInputStream(Path.of(testFilePath));
+             XWPFDocument document = new XWPFDocument(inputStream);
+             XWPFWordExtractor extractor = new XWPFWordExtractor(document)) {
             return extractor.getText();
         } catch (Exception e) {
             logger.log(ERROR, "Erreur lors de la lecture du fichier Word : " + e.getMessage());
