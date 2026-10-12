@@ -9,6 +9,7 @@ import org.apache.poi.xwpf.usermodel.XWPFRun;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
@@ -206,6 +207,46 @@ class MonAgentCVEtLettreDeMotivationTest {
         assertTrue(bodyRef.get().contains("Développeur Back-End Java"), "run doit envoyer le titre du CV configuré");
         assertTrue(bodyRef.get().contains("Développeur Java senior"),
                 "run doit envoyer le contenu de l'offre d'emploi configurée");
+    }
+
+    @Test
+    void run_recupereLeContexteDuSiteEntrepriseEtLinclutDansLaRequete() throws Exception {
+        AtomicReference<String> bodyRef = new AtomicReference<>();
+        server = HttpServer.create(new InetSocketAddress(0), 0);
+        server.createContext("/entreprise", exchange -> {
+            byte[] response = """
+                    <html><head><title>Entreprise Exemple</title><script>texte technique secret</script></head>
+                    <body><nav>Navigation</nav><main><h1>Entreprise Exemple</h1>
+                    <p>Nous développons des solutions de santé numérique.</p></main></body></html>
+                    """.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "text/html; charset=UTF-8");
+            exchange.sendResponseHeaders(200, response.length);
+            exchange.getResponseBody().write(response);
+            exchange.close();
+        });
+        server.createContext("/v1/chat/completions", exchange -> {
+            captureRequest(exchange, new AtomicReference<>(), new AtomicReference<>(), bodyRef);
+            byte[] response = "{\"ok\":true}".getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, response.length);
+            exchange.getResponseBody().write(response);
+            exchange.close();
+        });
+        server.start();
+
+        Properties properties = new Properties();
+        properties.setProperty("address", "http://127.0.0.1:" + server.getAddress().getPort() + "/v1/chat/completions");
+        properties.setProperty("model", "google/gemma-4-e2b");
+        properties.setProperty("cv.path", "src/test/resources/cv.docx");
+        properties.setProperty("company.website.url", "http://127.0.0.1:" + server.getAddress().getPort() + "/entreprise");
+
+        MonAgentCVEtLettreDeMotivation.run(properties);
+
+        assertTrue(bodyRef.get().contains("Nous développons des solutions de santé numérique."),
+                "Le prompt doit contenir le texte utile du site de l'entreprise");
+        assertTrue(bodyRef.get().contains("Entreprise Exemple"),
+                "Le prompt doit contenir le nom de l'entreprise trouvé sur le site");
+        assertFalse(bodyRef.get().contains("texte technique secret"), "Le prompt ne doit pas inclure le contenu des scripts");
+        assertFalse(bodyRef.get().contains("Navigation"), "Le prompt ne doit pas inclure les éléments de navigation");
     }
 
     @Test
@@ -414,6 +455,7 @@ class MonAgentCVEtLettreDeMotivationTest {
     }
 
     @Test
+    @EnabledIfSystemProperty(named = "runLmStudioIntegration", matches = "true")
     void run_genereLesDocumentsAvecLeVraiModeleLmStudio() throws Exception {
         Properties properties = MonAgentCVEtLettreDeMotivation.loadProperties();
         Path originalCvPath = tempDir.resolve("cv-synthetique.docx");
