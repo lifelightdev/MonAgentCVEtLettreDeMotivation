@@ -2,6 +2,8 @@ package life.light;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
+import org.apache.poi.xwpf.extractor.XWPFWordExtractor;
+import org.apache.poi.xwpf.usermodel.XWPFDocument;
 import org.apache.poi.xwpf.usermodel.XWPFParagraph;
 import org.apache.poi.xwpf.usermodel.XWPFRun;
 import org.junit.jupiter.api.AfterEach;
@@ -11,21 +13,14 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.net.HttpURLConnection;
 import java.net.InetSocketAddress;
-import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.charset.StandardCharsets;
 import java.util.Properties;
 import java.util.concurrent.atomic.AtomicReference;
 
-import org.apache.poi.xwpf.extractor.XWPFWordExtractor;
-import org.apache.poi.xwpf.usermodel.XWPFDocument;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.*;
 
 class MonAgentCVEtLettreDeMotivationTest {
 
@@ -218,7 +213,7 @@ class MonAgentCVEtLettreDeMotivationTest {
         String generatedContent = """
                 CV adapté
                 Jean DUPONT - Développeur Java
-
+                
                 Lettre de motivation
                 Madame, Monsieur,
                 Je vous adresse ma candidature.
@@ -257,7 +252,7 @@ class MonAgentCVEtLettreDeMotivationTest {
         String generatedContent = """
                 CV adapté
                 Jean DUPONT - Développeur Java
-
+                
                 Lettre de motivation
                 Madame, Monsieur,
                 Je vous adresse ma candidature.
@@ -308,7 +303,7 @@ class MonAgentCVEtLettreDeMotivationTest {
         String generatedContent = """
                 CV adapté
                 Jean DUPONT - Développeur Java
-
+                
                 Lettre de motivation
                 Madame, Monsieur,
                 Je vous adresse ma candidature.
@@ -342,6 +337,120 @@ class MonAgentCVEtLettreDeMotivationTest {
         assertTrue(readDocxText(cvOutputPath).contains("Jean DUPONT - Développeur Java"),
                 "La copie doit contenir le CV adapté généré");
         assertTrue(hasBoldRun(cvOutputPath), "La copie du CV doit conserver une mise en forme en gras");
+    }
+
+    @Test
+    void run_genereLesDeuxDocumentsWordDepuisLeCvEtLOffreSansModifierLaSource() throws Exception {
+        Path originalCvPath = tempDir.resolve("cv-original.docx");
+        try (XWPFDocument original = new XWPFDocument()) {
+            XWPFParagraph title = original.createParagraph();
+            title.createRun().setBold(true);
+            title.getRuns().getFirst().setText("Profil");
+            original.createParagraph().createRun().setText("Expérience");
+            try (var outputStream = Files.newOutputStream(originalCvPath)) {
+                original.write(outputStream);
+            }
+        }
+        byte[] originalCvBytes = Files.readAllBytes(originalCvPath);
+
+        Path jobOfferPath = tempDir.resolve("offre.txt");
+        String jobOffer = "Nous recrutons un développeur Java senior.";
+        Files.writeString(jobOfferPath, jobOffer, StandardCharsets.UTF_8);
+
+        String generatedContent = """
+                CV adapté
+                Jean DUPONT - Développeur Java
+                Compétences : Java, Spring
+                
+                Lettre de motivation
+                Madame, Monsieur,
+                Mon expérience Java correspond à vos besoins.
+                """.stripTrailing();
+        AtomicReference<String> methodRef = new AtomicReference<>();
+        AtomicReference<String> contentTypeRef = new AtomicReference<>();
+        AtomicReference<String> requestBodyRef = new AtomicReference<>();
+        server = HttpServer.create(new InetSocketAddress(0), 0);
+        server.createContext("/v1/chat/completions", exchange -> {
+            captureRequest(exchange, methodRef, contentTypeRef, requestBodyRef);
+            byte[] response = ("{\"choices\":[{\"message\":{\"content\":\""
+                    + generatedContent.replace("\n", "\\n")
+                    + "\"}}]}")
+                    .getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, response.length);
+            exchange.getResponseBody().write(response);
+            exchange.close();
+        });
+        server.start();
+
+        Path cvOutputPath = tempDir.resolve("resultats/cv-adapte.docx");
+        Path letterOutputPath = tempDir.resolve("resultats/lettre.docx");
+        Properties properties = new Properties();
+        properties.setProperty(
+                "address",
+                "http://127.0.0.1:" + server.getAddress().getPort() + "/v1/chat/completions"
+        );
+        properties.setProperty("model", "google/gemma-4-e2b");
+        properties.setProperty("cv.path", originalCvPath.toString());
+        properties.setProperty("job.offer.path", jobOfferPath.toString());
+        properties.setProperty("cv.output.path", cvOutputPath.toString());
+        properties.setProperty("letter.output.path", letterOutputPath.toString());
+
+        MonAgentCVEtLettreDeMotivation.run(properties);
+
+        assertEquals("POST", methodRef.get());
+        assertEquals("application/json", contentTypeRef.get());
+        assertTrue(requestBodyRef.get().contains("Profil"), "La requête doit inclure le contenu du CV");
+        assertTrue(requestBodyRef.get().contains(jobOffer), "La requête doit inclure l'offre d'emploi");
+        assertTrue(requestBodyRef.get().contains("CV adapté"));
+        assertTrue(requestBodyRef.get().contains("Lettre de motivation"));
+        assertEquals("Jean DUPONT - Développeur Java\nCompétences : Java, Spring", readDocxText(cvOutputPath));
+        assertEquals(
+                "Madame, Monsieur,\nMon expérience Java correspond à vos besoins.",
+                readDocxText(letterOutputPath)
+        );
+        assertTrue(hasBoldRun(cvOutputPath), "Le CV Word généré doit conserver le style en gras du modèle");
+        assertArrayEquals(originalCvBytes, Files.readAllBytes(originalCvPath),
+                "Le CV d'origine doit rester inchangé");
+    }
+
+    @Test
+    void run_genereLesDocumentsAvecLeVraiModeleLmStudio() throws Exception {
+        Properties properties = MonAgentCVEtLettreDeMotivation.loadProperties();
+        Path originalCvPath = tempDir.resolve("cv-synthetique.docx");
+        try (XWPFDocument cv = new XWPFDocument()) {
+            cv.createParagraph().createRun().setText("Camille Exemple");
+            cv.createParagraph().createRun().setText("Développeuse Java avec cinq ans d'expérience.");
+            cv.createParagraph().createRun().setText("Compétences : Java, Spring, SQL.");
+            try (var outputStream = Files.newOutputStream(originalCvPath)) {
+                cv.write(outputStream);
+            }
+        }
+        byte[] originalCvBytes = Files.readAllBytes(originalCvPath);
+
+        Path jobOfferPath = tempDir.resolve("offre-synthetique.txt");
+        Files.writeString(
+                jobOfferPath,
+                "Nous recherchons une développeuse Java maîtrisant Spring et SQL.",
+                StandardCharsets.UTF_8
+        );
+        Path cvOutputPath = tempDir.resolve("resultats/cv-adapte.docx");
+        Path letterOutputPath = tempDir.resolve("resultats/lettre-motivation.docx");
+        properties.setProperty("cv.path", originalCvPath.toString());
+        properties.setProperty("job.offer.path", jobOfferPath.toString());
+        properties.setProperty("cv.output.path", cvOutputPath.toString());
+        properties.setProperty("letter.output.path", letterOutputPath.toString());
+
+        String response = MonAgentCVEtLettreDeMotivation.run(properties);
+
+        assertTrue(response.contains("CV adapté"), "La réponse réelle doit contenir la section CV adapté");
+        assertTrue(response.contains("Lettre de motivation"),
+                "La réponse réelle doit contenir la section Lettre de motivation");
+        assertTrue(Files.size(cvOutputPath) > 0, "Le vrai agent doit créer le document Word du CV");
+        assertTrue(Files.size(letterOutputPath) > 0, "Le vrai agent doit créer le document Word de la lettre");
+        assertTrue(readDocxText(cvOutputPath).contains("Camille Exemple"),
+                "Le CV adapté doit reprendre l'identité synthétique fournie. Réponse : " + response);
+        assertArrayEquals(originalCvBytes, Files.readAllBytes(originalCvPath),
+                "Le vrai agent ne doit pas modifier le CV source");
     }
 
     private static String readDocxText(Path path) throws IOException {
@@ -500,15 +609,4 @@ class MonAgentCVEtLettreDeMotivationTest {
         }
     }
 
-    private static boolean isEndpointReachable(String address) {
-        try {
-            HttpURLConnection connection = (HttpURLConnection) new URL(address).openConnection();
-            connection.setConnectTimeout(2000);
-            connection.setReadTimeout(2000);
-            connection.getResponseCode();
-            return true;
-        } catch (Exception e) {
-            return false;
-        }
-    }
 }

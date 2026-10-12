@@ -32,6 +32,7 @@ public class MonAgentCVEtLettreDeMotivation {
     private static final ObjectMapper objectMapper = new ObjectMapper();
     private static final String DEFAULT_ROLE = "user";
     private static final String DEFAULT_CONTENT = "Dis-moi simplement bonjour en un seul mot et en Francais";
+    private static final double RESPONSE_TEMPERATURE = 0.2;
 
     static void main() {
         try {
@@ -124,6 +125,7 @@ public class MonAgentCVEtLettreDeMotivation {
     private static String normalizeHeading(String line) {
         return line.strip()
                 .replaceAll("^[#*\\s]+|[#*\\s]+$", "")
+                .replaceFirst("^\\d+[.)]\\s*", "")
                 .replaceAll(":$", "")
                 .strip();
     }
@@ -225,10 +227,10 @@ public class MonAgentCVEtLettreDeMotivation {
                 { "role": "%s", "content": "%s" }
               ],
               "system": "%s",
-              "temperature": 0.7,
-              "max_tokens": 200
+              "temperature": %s,
+              "max_tokens": 2000
             }
-            """.formatted(model, role, escapeJson(content), escapeJson(system));
+            """.formatted(model, role, escapeJson(content), escapeJson(system), RESPONSE_TEMPERATURE);
     }
 
     static String escapeJson(String value) {
@@ -251,13 +253,16 @@ public class MonAgentCVEtLettreDeMotivation {
         }
         message += """
 
-                À partir de mon CV et de l'offre d'emploi, rédige les deux sections suivantes :
+                À partir de mon CV et de l'offre d'emploi, rédige les deux sections suivantes.
+                Respecte exactement ces titres, chacun seul sur sa ligne et dans cet ordre, sans numéro ni autre titre :
 
                 CV adapté
-                Propose une version de mon CV adaptée à l'offre, sans inventer d'expérience, de compétence ou de diplôme.
+                Propose une version concise de mon CV adaptée à l'offre, sans inventer d'expérience, de compétence ou de diplôme.
+                Reprends exactement le nom et les informations personnelles présents dans le CV. Ne les omets pas et ne les remplace pas par un nom générique.
 
                 Lettre de motivation
                 Rédige une lettre de motivation personnalisée en faisant le lien entre mon parcours et les besoins de l'offre.
+                N'ajoute aucune introduction avant « CV adapté » ni aucun autre titre de section entre ces deux sections.
                 """;
         return message;
     }
