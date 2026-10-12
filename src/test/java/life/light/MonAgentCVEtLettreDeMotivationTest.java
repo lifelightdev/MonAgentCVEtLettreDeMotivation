@@ -17,7 +17,6 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 class MonAgentCVEtLettreDeMotivationTest {
 
@@ -224,6 +223,20 @@ class MonAgentCVEtLettreDeMotivationTest {
 
         assertTrue(message.contains("Voici mon CV :"), "Le message doit contenir la consigne");
         assertTrue(message.contains(cvContent), "Le message doit contenir le texte brut du CV");
+    }
+
+    @Test
+    void construireMessageUtilisateur_inclutLeCvEtLOffreEtLaDemandeDeLettre() {
+        String cvContent = "Jean DUPONT\nDéveloppeur Java";
+        String offreEmploi = "Développeur Java senior";
+
+        String message = MonAgentCVEtLettreDeMotivation.construireMessageUtilisateur(cvContent, offreEmploi);
+
+        assertTrue(message.contains("Voici mon CV :"), "Le message doit contenir le CV");
+        assertTrue(message.contains(cvContent), "Le message doit contenir le texte brut du CV");
+        assertTrue(message.contains("Voici l'offre d'emploi :"), "Le message doit contenir l'offre d'emploi");
+        assertTrue(message.contains(offreEmploi), "Le message doit contenir le texte brut de l'offre");
+        assertTrue(message.contains("lettre de motivation"), "Le message doit demander la rédaction d'une lettre de motivation");
     }
 
     @Test

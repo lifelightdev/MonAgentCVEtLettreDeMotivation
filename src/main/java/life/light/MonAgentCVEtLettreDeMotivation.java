@@ -83,11 +83,16 @@ public class MonAgentCVEtLettreDeMotivation {
     }
 
     static String construireMessageUtilisateur(String cvContent) {
-        return "Voici mon CV :\n" + cvContent;
+        return construireMessageUtilisateur(cvContent, "");
     }
 
     static String construireMessageUtilisateur(String cvContent, String jobOffer) {
-        return "Voici mon CV :\n" + cvContent + "\n\nVoici l'offre d'emploi :\n" + jobOffer;
+        String message = "Voici mon CV :\n" + cvContent;
+        if (jobOffer != null && !jobOffer.isBlank()) {
+            message += "\n\nVoici l'offre d'emploi :\n" + jobOffer;
+        }
+        message += "\n\nRédige-moi une lettre de motivation adaptée à cette offre.";
+        return message;
     }
 
     static String executeRequest(String address, String model) throws Exception {
