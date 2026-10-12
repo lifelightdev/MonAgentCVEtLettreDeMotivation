@@ -8,6 +8,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.Properties;
 
@@ -116,7 +117,21 @@ public class MonAgentCVEtLettreDeMotivation {
         if (parent != null) {
             Files.createDirectories(parent);
         }
-        Files.writeString(outputPath, content, StandardCharsets.UTF_8);
+        if (outputPath.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".docx")) {
+            writeWordFile(outputPath, content);
+        } else {
+            Files.writeString(outputPath, content, StandardCharsets.UTF_8);
+        }
+    }
+
+    private static void writeWordFile(Path outputPath, String content) throws IOException {
+        try (XWPFDocument document = new XWPFDocument();
+             OutputStream outputStream = Files.newOutputStream(outputPath)) {
+            for (String line : content.split("\\R", -1)) {
+                document.createParagraph().createRun().setText(line);
+            }
+            document.write(outputStream);
+        }
     }
 
     private record GeneratedDocuments(String cv, String letter) {}

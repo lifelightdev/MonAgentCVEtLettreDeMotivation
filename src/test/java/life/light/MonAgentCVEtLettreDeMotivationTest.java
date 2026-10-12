@@ -18,6 +18,9 @@ import java.nio.charset.StandardCharsets;
 import java.util.Properties;
 import java.util.concurrent.atomic.AtomicReference;
 
+import org.apache.poi.xwpf.extractor.XWPFWordExtractor;
+import org.apache.poi.xwpf.usermodel.XWPFDocument;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -244,6 +247,53 @@ class MonAgentCVEtLettreDeMotivationTest {
 
         assertEquals("Jean DUPONT - Développeur Java", Files.readString(cvOutputPath));
         assertEquals("Madame, Monsieur,\nJe vous adresse ma candidature.", Files.readString(letterOutputPath));
+    }
+
+    @Test
+    void run_ecritLeCvEtLaLettreDansDeuxFichiersWord() throws Exception {
+        String generatedContent = """
+                CV adapté
+                Jean DUPONT - Développeur Java
+
+                Lettre de motivation
+                Madame, Monsieur,
+                Je vous adresse ma candidature.
+                """.stripTrailing();
+
+        server = HttpServer.create(new InetSocketAddress(0), 0);
+        server.createContext("/v1/chat/completions", exchange -> {
+            byte[] response = ("{\"choices\":[{\"message\":{\"content\":\""
+                    + generatedContent.replace("\n", "\\n")
+                    + "\"}}]}")
+                    .getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, response.length);
+            exchange.getResponseBody().write(response);
+            exchange.close();
+        });
+        server.start();
+
+        Path cvOutputPath = tempDir.resolve("sorties/cv-adapte.docx");
+        Path letterOutputPath = tempDir.resolve("sorties/lettre-motivation.docx");
+        Properties properties = new Properties();
+        properties.setProperty("address", "http://127.0.0.1:" + server.getAddress().getPort() + "/v1/chat/completions");
+        properties.setProperty("model", "google/gemma-4-e2b");
+        properties.setProperty("cv.path", "src/test/resources/cv.docx");
+        properties.setProperty("job.offer.path", "src/test/resources/offre-emploi.txt");
+        properties.setProperty("cv.output.path", cvOutputPath.toString());
+        properties.setProperty("letter.output.path", letterOutputPath.toString());
+
+        MonAgentCVEtLettreDeMotivation.run(properties);
+
+        assertEquals("Jean DUPONT - Développeur Java", readDocxText(cvOutputPath));
+        assertEquals("Madame, Monsieur,\nJe vous adresse ma candidature.", readDocxText(letterOutputPath));
+    }
+
+    private static String readDocxText(Path path) throws IOException {
+        try (InputStream inputStream = Files.newInputStream(path);
+             XWPFDocument document = new XWPFDocument(inputStream);
+             XWPFWordExtractor extractor = new XWPFWordExtractor(document)) {
+            return extractor.getText().stripTrailing();
+        }
     }
 
     @Test
